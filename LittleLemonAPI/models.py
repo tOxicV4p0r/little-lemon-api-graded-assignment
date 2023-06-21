@@ -15,10 +15,13 @@ class MenuItem(models.Model):
     featured = models.BooleanField(db_index=True)
     category = models.ForeignKey(Category, on_delete=models.PROTECT)
 
+    def __str__(self)->str:
+        return self.title
+
 class Cart(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     menuitem = models.ForeignKey(MenuItem, on_delete=models.CASCADE)
-    quantity = models.SmallIntegerField(default=0),
+    quantity = models.SmallIntegerField(default=0)
     unit_price = models.DecimalField(max_digits=6, decimal_places=2, default=0)
     price = models.DecimalField(max_digits=6, decimal_places=2, default=0)
 
@@ -35,7 +38,7 @@ class Order(models.Model):
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE)
     menuitem = models.ForeignKey(MenuItem, on_delete=models.CASCADE)
-    quantity = models.SmallIntegerField(default=0),
+    quantity = models.SmallIntegerField(default=0)
     unit_price = models.DecimalField(max_digits=6, decimal_places=2, default=0)
     price = models.DecimalField(max_digits=6, decimal_places=2, default=0)
 

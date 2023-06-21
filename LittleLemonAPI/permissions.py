@@ -1,7 +1,20 @@
 from rest_framework import permissions
 from rest_framework.exceptions import PermissionDenied
 
-class IsManagerPostOrReadOnly(permissions.DjangoModelPermissionsOrAnonReadOnly):
+class IsManager(permissions.BasePermission):
+    def has_permission(self, request, view):
+        if request.user.groups.filter(name="Manager").exists():
+            return True
+        
+        raise PermissionDenied({"message":"Unauthorized"})
+    
+    def has_object_permission(self, request, view, obj):
+        if request.user.groups.filter(name="Manager").exists():
+            return True
+        
+        raise PermissionDenied({"message":"Unauthorized"})
+    
+class IsManagerPostOrReadOnly(permissions.BasePermission):
     def has_permission(self, request, view):
         if request.user.is_superuser:
             return True
@@ -19,7 +32,7 @@ class IsManagerPostOrReadOnly(permissions.DjangoModelPermissionsOrAnonReadOnly):
         return False
 
 
-class IsManagerEditOrReadOnly(permissions.DjangoModelPermissionsOrAnonReadOnly):
+class IsManagerEditOrReadOnly(permissions.BasePermission):
     
     def has_permission(self, request, view):
         return True
