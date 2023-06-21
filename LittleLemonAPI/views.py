@@ -1,4 +1,4 @@
-from django.shortcuts import render,get_object_or_404
+from django.shortcuts import get_object_or_404, get_list_or_404
 from django.db import IntegrityError
 from django.http import JsonResponse
 from django.forms.models import model_to_dict
@@ -20,7 +20,7 @@ from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 
 from rest_framework import generics
 from .models import Category, MenuItem, Cart, Order, OrderItem
-from .serializers import CategorySerializer, MenuItemSerializer, UserSerializer, CartSerializer
+from .serializers import CategorySerializer, MenuItemSerializer, UserSerializer, CartSerializer, OrderSerializer, OrderItemSerializer
 
 # Create your views here.
 class CategoriesView(generics.ListCreateAPIView):
@@ -52,6 +52,31 @@ class CartView(generics.ListCreateAPIView, generics.DestroyAPIView):
         items = Cart.objects.filter(user=user)
         items.delete()
         return Response({"message":"deleted"},status.HTTP_204_NO_CONTENT)
+
+
+class OrderView(generics.ListCreateAPIView):
+    permission_classes = [IsAuthenticated]
+    queryset = Order.objects.all()
+    serializer_class = OrderSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        return Order.objects.filter(user=user)
+    
+    def create(self, request, *args, **kwargs):
+        user = self.request.user
+        items = get_list_or_404(Cart, user=user)
+        # valid_objects = []
+        orderId = 1
+        for data in items:
+            serializeObject = OrderItemSerializer(data=data)
+            
+            if serializeObject.is_valid():
+                serializeObject.save()
+            else:
+                return Response({"message":"error"}, status.HTTP_400_BAD_REQUEST)
+        # for obj in valid_objects:
+        #   obj.save()
 
 @api_view(['GET','POST'])
 @permission_classes([IsAdminUser|IsManager])
@@ -115,6 +140,61 @@ def delivery_crew_del(req,userId):
 
     return Response({"message":"error"}, status.HTTP_400_BAD_REQUEST)
 
+@api_view(['GET','POST'])
+@permission_classes([IsAuthenticated])
+def order_list(req):
+    user = req.user
+    if( req.method == 'GET'):
+        items = get_list_or_404(Order,user=user)
+        # items = Order.objects.select_related('user').all()
+        serialized_item = OrderSerializer(items, many=True)
+        return Response(serialized_item.data, status.HTTP_200_OK)
+    
+    if req.method =='POST':
+        deliveryCrewId = req.data.get('delivery_crew')
+        state = bool(req.data.get('status'))
+        total = float(req.data.get('total'))
+        date = req.data.get('date')
+        diliveryUser = get_object_or_404(User, id=deliveryCrewId)
+
+        order = Order(
+            user = user,
+            delivery_crew = diliveryUser,
+            status = state,
+            total = total,
+            date = date
+        )
+        
+        # save Order -> get orderId
+        serialized_item = OrderSerializer(data = model_to_dict(order))
+        serialized_item.is_valid(raise_exception=True)
+        serialized_item.save()
+
+        # get Orderitem from Cart
+        orderId = serialized_item.data['id']
+        orderInst = get_object_or_404(Order, id=serialized_item.data['id'])
+        items = get_list_or_404(Cart,user=user)
+        serialized_item = CartSerializer(items, many=True)
+        for item in serialized_item.data:
+            menuitem = get_object_or_404(MenuItem, id=item['menuitem'])
+            obj = OrderItem(
+                order = orderInst,
+                menuitem = menuitem,
+                quantity = item['quantity'],
+                unit_price = item['unit_price'],
+                price = item['price'],
+            )
+            serialized_item = OrderItemSerializer(data = model_to_dict(obj))
+            serialized_item.is_valid(raise_exception=True)
+            serialized_item.save()
+
+        # remove menuitem from Cart
+        # 
+        Cart.objects.filter(user=user).delete()
+
+        return Response(serialized_item.data, status.HTTP_201_CREATED)
+ 
+    return Response({"message":"error"}, status.HTTP_400_BAD_REQUEST)
 
 """ 
 @api_view(['GET','POST','PUT','PATCH','DELETE'])
