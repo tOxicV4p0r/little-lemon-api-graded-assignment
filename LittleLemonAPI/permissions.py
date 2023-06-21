@@ -1,15 +1,38 @@
 from rest_framework import permissions
+from rest_framework.exceptions import PermissionDenied
 
-class IsOwnerOrReadOnly(permissions.IsAuthenticatedOrReadOnly):
-    """
-    Custom permission to only allow owners of an object to edit it.
-    """
-
-    def has_object_permission(self, request, view, obj):
-        # Read permissions are allowed to any request,
-        # so we'll always allow GET, HEAD or OPTIONS requests.
+class IsManagerPostOrReadOnly(permissions.DjangoModelPermissionsOrAnonReadOnly):
+    def has_permission(self, request, view):
+        if request.user.is_superuser:
+            return True
+        
         if request.method in permissions.SAFE_METHODS:
             return True
+        
+        edit_methods = ("POST")
+        if request.method in edit_methods and request.user.groups.filter(name="Manager").exists():
+            return True
+        
+        raise PermissionDenied({"message":"Unauthorized"})
+    
+    def has_object_permission(self, request, view, obj):
+        return False
 
-        # Write permissions are only allowed to the owner of the snippet.
-        return obj.owner == request.user
+
+class IsManagerEditOrReadOnly(permissions.DjangoModelPermissionsOrAnonReadOnly):
+    
+    def has_permission(self, request, view):
+        return True
+    
+    def has_object_permission(self, request, view, obj):
+        edit_methods = ("PUT","PATCH","DELETE")
+        if request.user.is_superuser:
+            return True
+        
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        
+        if request.method in edit_methods and request.user.groups.filter(name="Manager").exists():
+            return True
+        
+        raise PermissionDenied({"message":"Unauthorized"})

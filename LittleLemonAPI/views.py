@@ -11,7 +11,8 @@ from rest_framework.decorators import api_view
 from rest_framework import viewsets
 from rest_framework.views import APIView
 
-from rest_framework.permissions import IsAuthenticated, IsAdminUser, IsAuthenticatedOrReadOnly
+from .permissions import IsManagerPostOrReadOnly, IsManagerEditOrReadOnly
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, IsAuthenticatedOrReadOnly, DjangoModelPermissionsOrAnonReadOnly
 from rest_framework.decorators import permission_classes, throttle_classes
 from django.contrib.auth.models import User, Group
 
@@ -27,11 +28,18 @@ class CategoriesView(generics.ListCreateAPIView):
     serializer_class = CategorySerializer
 
 class MenuItemsView(generics.ListCreateAPIView):
-    permission_classes = [IsAuthenticatedOrReadOnly]
-    throttle_classes = [AnonRateThrottle,UserRateThrottle]
+    permission_classes = [IsManagerPostOrReadOnly]
+    # throttle_classes = [AnonRateThrottle,UserRateThrottle]
     queryset = MenuItem.objects.select_related('category').all()
     serializer_class = MenuItemSerializer
 
+class SingleMenuItemView(generics.RetrieveUpdateAPIView,generics.DestroyAPIView):
+    permission_classes = [IsManagerEditOrReadOnly]
+    queryset = MenuItem.objects.all()
+    serializer_class = MenuItemSerializer
+
+
+""" 
 @api_view(['GET','POST','PUT','PATCH','DELETE'])
 def menu_items(req):
     if req.method =='GET':
@@ -48,12 +56,20 @@ def menu_items(req):
 
     return Response({"message":"You are not authorized"}, status.HTTP_403_FORBIDDEN)
 
-class SingleMenuItemView(generics.RetrieveUpdateAPIView,generics.DestroyAPIView):
-    queryset = MenuItem.objects.all()
-    serializer_class = MenuItemSerializer
-
-@api_view(['GET','POST','PUT','PATCH','DELETE'])
+@api_view(['GET','PUT','PATCH','DELETE'])
 def menu_items_detail(req, pk):
-    items = get_object_or_404(MenuItem,pk=pk)
-    serialized_item = MenuItemSerializer(items)
-    return Response(serialized_item.data, status.HTTP_200_OK) 
+    if req.method =='GET':
+        items = get_object_or_404(MenuItem,pk=pk)
+        serialized_item = MenuItemSerializer(items)
+        return Response(serialized_item.data, status.HTTP_200_OK) 
+    
+    if req.user.groups.filter(name='Manager').exists():
+        if( req.method == 'PUT' or req.method == 'PATCH'):
+            serialized_item = MenuItemSerializer(data = req.data)
+            serialized_item.is_valid(raise_exception=True)
+            serialized_item.save()
+            return Response(serialized_item.data, status.HTTP_200_OK)
+    
+    return Response({"message":"You are not authorized"}, status.HTTP_403_FORBIDDEN) 
+
+"""
