@@ -5,7 +5,7 @@ from rest_framework.authtoken.views import obtain_auth_token
 urlpatterns = [
 
     # Menu-items endpoints
-    path('category', views.CategoriesView.as_view()),
+    path('categories', views.CategoriesView.as_view()),
     path('menu-items', views.MenuItemsView.as_view()),
     ## path('menu-items', views.menu_items),
     path('menu-items/<int:pk>', views.SingleMenuItemView.as_view()),
@@ -23,9 +23,8 @@ urlpatterns = [
 
     # Order management endpoints
     # path('orders', views.OrderView.as_view()),
+    path('cart/orders', views.order_list),
     path('orders', views.order_list),
+    path('cart/orders/<int:orderId>', views.order_detail),
     path('orders/<int:orderId>', views.order_detail),
-
-    # token generation endpoints 
-    path('', include('djoser.urls')),
 ]

@@ -4,7 +4,9 @@ from django.http import JsonResponse
 from django.forms.models import model_to_dict
 from django.core.paginator import Paginator, EmptyPage
 from django.contrib.auth.decorators import permission_required
+from django_filters.rest_framework import DjangoFilterBackend
 
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -24,7 +26,7 @@ from .serializers import CategorySerializer, MenuItemSerializer, UserSerializer,
 
 # Create your views here.
 class CategoriesView(generics.ListCreateAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsManagerPostOrReadOnly,IsAuthenticated]
     throttle_classes = [AnonRateThrottle,UserRateThrottle]
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
@@ -33,7 +35,29 @@ class MenuItemsView(generics.ListCreateAPIView):
     permission_classes = [IsManagerPostOrReadOnly,IsAuthenticated]
     throttle_classes = [AnonRateThrottle,UserRateThrottle]
     queryset = MenuItem.objects.select_related('category').all()
+    pagination_class = PageNumberPagination
     serializer_class = MenuItemSerializer
+    # filter_backends = [DjangoFilterBackend]
+    # filterset_fields = ['category', 'to_price']
+  
+    def get_queryset(self):
+        items = MenuItem.objects.select_related('category').all()
+        # category_name = self.request.query_params.get('category')
+        # to_price = self.request.query_params.get('to_price')
+        search = self.request.query_params.get('search')
+        ordering = self.request.query_params.get('ordering')
+
+        # if category_name:
+        #    items = items.filter(category__title = category_name)
+        # if to_price:
+        #    items = items.filter(price = to_price)
+        if search:
+            items = items.filter(title__contains = search)
+        if ordering:
+            ordering_fields = ordering.split(",")
+            items = items.order_by(*ordering_fields)
+
+        return items
 
 class SingleMenuItemView(generics.RetrieveUpdateAPIView,generics.DestroyAPIView):
     permission_classes = [IsManagerEditOrReadOnly,IsAuthenticated]
@@ -178,30 +202,37 @@ def order_list(req):
     if req.method =='POST':
         # if don't have item on Cart -> return 404 not found items
         items = get_list_or_404(Cart,user=user)
-
+        serialized_item = CartSerializer(items, many=True)
+        sum = 0
+        for item in serialized_item.data:
+             sum += float(item['price'])
+        
+        # return Response(sum, status.HTTP_200_OK)
+        
         # fix dummy data
         deliveryCrewId = 2
         state = False
-        total = float("23.23")
-        date = "2023-06-23"
+        date = req.data.get('date')
+        if not date:
+            date = "2023-06-23"
         diliveryUser = get_object_or_404(User, pk=deliveryCrewId)
 
         order = Order(
             user = user,
             delivery_crew = diliveryUser,
             status = state,
-            total = total,
+            total = sum,
             date = date
         )
         
         # save Order -> get orderId
-        serialized_item = OrderSerializer(data = model_to_dict(order))
-        serialized_item.is_valid(raise_exception=True)
-        serialized_item.save()
+        serialized_order = OrderSerializer(data = model_to_dict(order))
+        serialized_order.is_valid(raise_exception=True)
+        serialized_order.save()
 
         # get Orderitem from Cart
-        orderId = serialized_item.data['id']
-        orderInst = get_object_or_404(Order, id=serialized_item.data['id'])  
+        # orderId = serialized_item.data['id']
+        orderInst = get_object_or_404(Order, id=serialized_order.data['id'])  
         serialized_item = CartSerializer(items, many=True)
         for item in serialized_item.data:
             menuitem = get_object_or_404(MenuItem, id=item['menuitem'])
@@ -219,7 +250,7 @@ def order_list(req):
         # remove menuitem from Cart
         Cart.objects.filter(user=user).delete()
 
-        return Response(serialized_item.data, status.HTTP_201_CREATED)
+        return Response(serialized_order.data, status.HTTP_201_CREATED)
  
     return Response({"message":"error"}, status.HTTP_400_BAD_REQUEST)
 
@@ -230,15 +261,20 @@ def order_detail(req,orderId):
     user = req.user
     
     if( user.groups.filter(name="Manager").exists() ) :
+        if( req.method == 'GET'):
+            get_object_or_404(Order,pk=orderId)
+            items = get_list_or_404(OrderItem,order=orderId)
+            serialized_item = OrderItemSerializer(items,many=True)
+            return Response(serialized_item.data, status.HTTP_200_OK)
+    
         if( req.method == 'PUT'):
             if 'status' in req.data and 'delivery_crew' in req.data:
                 deliveryCrewId = req.data.get('delivery_crew')
-                diliveryUser = get_object_or_404(User, id=deliveryCrewId)
+                diliveryUser = get_object_or_404(User, pk=deliveryCrewId)
                 state = bool(req.data.get('status'))
                 item = get_object_or_404(Order,pk=orderId)
                 item.delivery_crew = diliveryUser
                 item.status = state
-                OrderSerializer(item)
                 item.save()
                 serialized_item = OrderSerializer(item)
                 return Response(serialized_item.data, status.HTTP_200_OK)
@@ -246,10 +282,28 @@ def order_detail(req,orderId):
                 return Response({"message": "Required field not found."}, status.HTTP_400_BAD_REQUEST)
         
         if( req.method == 'PATCH'):
-            if 'status' in req.data:
+            if 'status' in req.data and 'delivery_crew' in req.data:
+                deliveryCrewId = req.data.get('delivery_crew')
+                diliveryUser = get_object_or_404(User, pk=deliveryCrewId)
+                state = bool(req.data.get('status'))
+                item = get_object_or_404(Order,pk=orderId)
+                item.delivery_crew = diliveryUser
+                item.status = state
+                item.save()
+                serialized_item = OrderSerializer(item)
+                return Response(serialized_item.data, status.HTTP_200_OK)
+            elif 'status' in req.data:
                 state = bool(req.data.get('status'))
                 item = get_object_or_404(Order,pk=orderId)
                 item.status = state
+                item.save()
+                serialized_item = OrderSerializer(item)
+                return Response(serialized_item.data, status.HTTP_200_OK)
+            elif 'delivery_crew' in req.data:
+                deliveryCrewId = req.data.get('delivery_crew')
+                diliveryUser = get_object_or_404(User, pk=deliveryCrewId)
+                item = get_object_or_404(Order,pk=orderId)
+                item.delivery_crew = diliveryUser
                 item.save()
                 serialized_item = OrderSerializer(item)
                 return Response(serialized_item.data, status.HTTP_200_OK)
@@ -261,7 +315,7 @@ def order_detail(req,orderId):
             get_object_or_404(Order,pk=orderId).delete()
             return Response({"message":"deleted"}, status.HTTP_200_OK)
         
-        return Response({"message":"Method not allowed"},status.HTTP_403_FORBIDDEN)
+        # return Response({"message":"Method not allowed"},status.HTTP_403_FORBIDDEN)
         
     if( user.groups.filter(name="Delivery crew").exists() ):
         if( req.method == 'PATCH'):

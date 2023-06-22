@@ -23,6 +23,11 @@ class MenuItemSerializer(serializers.ModelSerializer):
         }
 
 class CartSerializer(serializers.ModelSerializer):
+    def cal_price(self, product:Cart):
+        return Decimal(product.quantity)* Decimal(product.unit_price)
+    
+    price = serializers.SerializerMethodField(method_name='cal_price')
+    
     user = serializers.PrimaryKeyRelatedField( 
         queryset = User.objects.all(),
         default = serializers.CurrentUserDefault(),
@@ -37,7 +42,7 @@ class OrderSerializer(serializers.ModelSerializer):
         queryset = User.objects.all(),
         default = serializers.CurrentUserDefault(),
     )
-    
+
     class Meta:
         model = Order
         fields = ['id','user','delivery_crew','status','total','date']

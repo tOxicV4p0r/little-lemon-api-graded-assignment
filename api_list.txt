@@ -1,0 +1,121 @@
+admin
+user: admin
+pass: admin
+token: ceac52400d6aedfd8ce7ef07e57813472f9c3cdd
+---------------
+manager
+user: Sana
+pass: lemon@san!
+token: dc6bee82c323b4abefccb8c83edbaba08bceee71
+---------------
+Delivery crew
+id: 2
+user: Adrian
+pass: lemon@adr!
+token: 78d34e3a53ace5b568598701630b5a1c6b8bccc0
+
+id: 3
+user: Mario
+pass: lemon@mar!
+token: 44a7be520df2388c18266e5aed04ea19c0bb8fe8
+---------------
+customer
+customer1: cuspass123	token: 6e6d7899525b648ed83e3e1f4216473b57aa1200
+customer2: cuspass123	token: 43e5c90d35033daa4af2fe75e40b412ad94b1f33
+customer3: cuspass123	token: 86aaa37a2beada3a016e9637eb9a833064415e8d
+---------------
+testuser:testpass123	token: b1e86c7f2c050818235287b025d86ebac030135a
+---------------
+Category endpoints
+customer
+/api/categories		GET
+
+manager, admin
+/api/categories		GET,POST
+ex. add categories	POST
+{
+	"slug": "",
+	"title": ""
+}
+---------------
+Auth endpoints
+/auth/users/
+/auth/token/login/
+ex. login
+{
+	"username":"Sana",
+	"password":"lemon@san!"
+}
+---------------
+Menu management endpoints 
+manager
+/api/menu-items				GET,POST
+/api/menu-items/{munuitem}	GET,PUT,PATCH,DELETE
+
+ex. update the item of the day
+/api/menu-items/1			PATCH
+{
+	"featured": true
+}
+---------------
+User group endpoints
+manager
+/api/groups/manager/users					GET,POST
+/api/groups/manager/users/{userId}			DELETE
+/api/groups/delivery-crew/users				GET,POST
+/api/groups/delivery-crew/users/{userId}	DELETE
+
+ex. assign users to the manager group
+/api/groups/manager/users					POST
+{
+	"username":"testuser"
+}
+
+ex. delete (user id :5 (testuser) )
+api/groups/manager/users/5					DELETE
+
+ex. assign users to the delivery crew		POST
+/api/groups/delivery-crew/users
+{
+	"username":"testuser"
+}
+---------------
+Cart management endpoints 
+customer
+/api/cart/menu-items					GET,POST
+/api/cart/orders						GET,POST
+ex. add menu items(id 1-9) to the cart	POST
+{
+	"menuitem": 1,
+	"unit_price": "2.5",
+	"quantity": 2
+}
+
+ex. customers place orders
+/api/cart/orders						POST
+{
+	"date":"2022-11-16"
+}
+
+---------------
+Order management endpoints
+
+Manager
+/api/orders								GET
+/api/orders/{orderId}					GET,PUT,PATCH,DELETE
+
+ex. assign orders(id 22,24,25,28,29) to the delivery crew(id 2,3)
+/api/orders/22							PATCH
+{
+	"delivery_crew": 2
+}
+
+Delivery crew
+/api/orders								GET
+/api/orders/{orderId}					PATCH
+
+ex. delivery crew can update an order
+/api/orders/22							PATCH
+{
+	"status": true
+}

@@ -35,6 +35,9 @@ class IsManagerPostOrReadOnly(permissions.BasePermission):
 class IsManagerEditOrReadOnly(permissions.BasePermission):
     
     def has_permission(self, request, view):
+        if request.user.is_superuser:
+            return True
+        
         edit_methods = ("POST","PUT","PATCH","DELETE")
         if request.method in edit_methods and not request.user.groups.filter(name="Manager").exists():
             raise PermissionDenied({"message":"Unauthorized"})
