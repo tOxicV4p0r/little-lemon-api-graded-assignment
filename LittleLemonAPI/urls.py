@@ -24,6 +24,7 @@ urlpatterns = [
     # Order management endpoints
     # path('orders', views.OrderView.as_view()),
     path('orders', views.order_list),
+    path('orders/<int:orderId>', views.order_detail),
 
     # token generation endpoints 
     path('', include('djoser.urls')),

@@ -24,22 +24,26 @@ from .serializers import CategorySerializer, MenuItemSerializer, UserSerializer,
 
 # Create your views here.
 class CategoriesView(generics.ListCreateAPIView):
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [AnonRateThrottle,UserRateThrottle]
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
 
 class MenuItemsView(generics.ListCreateAPIView):
-    permission_classes = [IsManagerPostOrReadOnly]
-    # throttle_classes = [AnonRateThrottle,UserRateThrottle]
+    permission_classes = [IsManagerPostOrReadOnly,IsAuthenticated]
+    throttle_classes = [AnonRateThrottle,UserRateThrottle]
     queryset = MenuItem.objects.select_related('category').all()
     serializer_class = MenuItemSerializer
 
 class SingleMenuItemView(generics.RetrieveUpdateAPIView,generics.DestroyAPIView):
-    permission_classes = [IsManagerEditOrReadOnly]
+    permission_classes = [IsManagerEditOrReadOnly,IsAuthenticated]
+    throttle_classes = [AnonRateThrottle,UserRateThrottle]
     queryset = MenuItem.objects.all()
     serializer_class = MenuItemSerializer
 
 class CartView(generics.ListCreateAPIView, generics.DestroyAPIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [AnonRateThrottle,UserRateThrottle]
     queryset = Cart.objects.all()
     serializer_class = CartSerializer
 
@@ -56,6 +60,7 @@ class CartView(generics.ListCreateAPIView, generics.DestroyAPIView):
 
 class OrderView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [AnonRateThrottle,UserRateThrottle]
     queryset = Order.objects.all()
     serializer_class = OrderSerializer
 
@@ -80,26 +85,32 @@ class OrderView(generics.ListCreateAPIView):
 
 @api_view(['GET','POST'])
 @permission_classes([IsAdminUser|IsManager])
+@throttle_classes([AnonRateThrottle,UserRateThrottle])
 def manager_list(req):
     if( req.method == 'GET'):
         users = User.objects.filter(groups__name='Manager')
         serialized_item = UserSerializer(users, many=True)
         return Response(serialized_item.data, status.HTTP_200_OK)
     
-    username = req.data.get('username')
-    if username:
+    
+    if 'username' in req.data :
+        username = req.data.get('username')
         user = get_object_or_404(User, username=username)
         managers = Group.objects.get(name="Manager")
         if req.method =='POST':
             managers.user_set.add(user)
             return Response({"message":"added"}, status.HTTP_201_CREATED)
+    
+    else:
+        return Response({"message": "Required field not found."}, status.HTTP_400_BAD_REQUEST)
 
     return Response({"message":"error"}, status.HTTP_400_BAD_REQUEST)
 
 @api_view(['DELETE'])
 @permission_classes([IsAdminUser|IsManager])
+@throttle_classes([AnonRateThrottle,UserRateThrottle])
 def manager_del(req,userId):
-
+    get_object_or_404(User,groups__name='Manager',pk=userId) 
     user = get_object_or_404(User, id=userId)
     managers = Group.objects.get(name="Manager")
     
@@ -111,6 +122,7 @@ def manager_del(req,userId):
 
 @api_view(['GET','POST'])
 @permission_classes([IsAdminUser|IsManager])
+@throttle_classes([AnonRateThrottle,UserRateThrottle])
 def delivery_crew_list(req):
     if( req.method == 'GET'):
         users = User.objects.filter(groups__name='Delivery crew')
@@ -129,8 +141,9 @@ def delivery_crew_list(req):
 
 @api_view(['DELETE'])
 @permission_classes([IsAdminUser|IsManager])
+@throttle_classes([AnonRateThrottle,UserRateThrottle])
 def delivery_crew_del(req,userId):
-
+    get_object_or_404(User,groups__name='Delivery crew',pk=userId) 
     user = get_object_or_404(User, id=userId)
     managers = Group.objects.get(name="Delivery crew")
     
@@ -142,20 +155,36 @@ def delivery_crew_del(req,userId):
 
 @api_view(['GET','POST'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([AnonRateThrottle,UserRateThrottle])
 def order_list(req):
     user = req.user
     if( req.method == 'GET'):
-        items = get_list_or_404(Order,user=user)
+        if( user.groups.filter(name="Manager").exists() ) :
+            items = Order.objects.all()
+            serialized_item = OrderSerializer(items,many=True)
+            return Response(serialized_item.data, status.HTTP_200_OK)
+        
+        if( user.groups.filter(name="Delivery crew").exists() ) :
+            items = Order.objects.filter(delivery_crew=user)
+            serialized_item = OrderSerializer(items,many=True)
+            return Response(serialized_item.data, status.HTTP_200_OK)
+        
+        # items = get_list_or_404(Order,user=user)
+        items = Order.objects.filter(user=user)
         # items = Order.objects.select_related('user').all()
         serialized_item = OrderSerializer(items, many=True)
         return Response(serialized_item.data, status.HTTP_200_OK)
     
     if req.method =='POST':
-        deliveryCrewId = req.data.get('delivery_crew')
-        state = bool(req.data.get('status'))
-        total = float(req.data.get('total'))
-        date = req.data.get('date')
-        diliveryUser = get_object_or_404(User, id=deliveryCrewId)
+        # if don't have item on Cart -> return 404 not found items
+        items = get_list_or_404(Cart,user=user)
+
+        # fix dummy data
+        deliveryCrewId = 2
+        state = False
+        total = float("23.23")
+        date = "2023-06-23"
+        diliveryUser = get_object_or_404(User, pk=deliveryCrewId)
 
         order = Order(
             user = user,
@@ -172,8 +201,7 @@ def order_list(req):
 
         # get Orderitem from Cart
         orderId = serialized_item.data['id']
-        orderInst = get_object_or_404(Order, id=serialized_item.data['id'])
-        items = get_list_or_404(Cart,user=user)
+        orderInst = get_object_or_404(Order, id=serialized_item.data['id'])  
         serialized_item = CartSerializer(items, many=True)
         for item in serialized_item.data:
             menuitem = get_object_or_404(MenuItem, id=item['menuitem'])
@@ -189,12 +217,74 @@ def order_list(req):
             serialized_item.save()
 
         # remove menuitem from Cart
-        # 
         Cart.objects.filter(user=user).delete()
 
         return Response(serialized_item.data, status.HTTP_201_CREATED)
  
     return Response({"message":"error"}, status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET','PUT','PATCH','DELETE'])
+@permission_classes([IsAuthenticated])
+@throttle_classes([AnonRateThrottle,UserRateThrottle])
+def order_detail(req,orderId):
+    user = req.user
+    
+    if( user.groups.filter(name="Manager").exists() ) :
+        if( req.method == 'PUT'):
+            if 'status' in req.data and 'delivery_crew' in req.data:
+                deliveryCrewId = req.data.get('delivery_crew')
+                diliveryUser = get_object_or_404(User, id=deliveryCrewId)
+                state = bool(req.data.get('status'))
+                item = get_object_or_404(Order,pk=orderId)
+                item.delivery_crew = diliveryUser
+                item.status = state
+                OrderSerializer(item)
+                item.save()
+                serialized_item = OrderSerializer(item)
+                return Response(serialized_item.data, status.HTTP_200_OK)
+            else:
+                return Response({"message": "Required field not found."}, status.HTTP_400_BAD_REQUEST)
+        
+        if( req.method == 'PATCH'):
+            if 'status' in req.data:
+                state = bool(req.data.get('status'))
+                item = get_object_or_404(Order,pk=orderId)
+                item.status = state
+                item.save()
+                serialized_item = OrderSerializer(item)
+                return Response(serialized_item.data, status.HTTP_200_OK)
+            else:
+                return Response({"message": "Required field not found."}, status.HTTP_400_BAD_REQUEST)
+
+        if req.method == 'DELETE':
+            # delete order
+            get_object_or_404(Order,pk=orderId).delete()
+            return Response({"message":"deleted"}, status.HTTP_200_OK)
+        
+        return Response({"message":"Method not allowed"},status.HTTP_403_FORBIDDEN)
+        
+    if( user.groups.filter(name="Delivery crew").exists() ):
+        if( req.method == 'PATCH'):
+            if 'status' in req.data:
+                state = bool(req.data.get('status'))
+                item = get_object_or_404(Order,delivery_crew=user,pk=orderId)
+                item.status = state
+                item.save()
+                serialized_item = OrderSerializer(item)
+                return Response(serialized_item.data, status.HTTP_200_OK)
+            else:
+                return Response({"message": "Required field not found."}, status.HTTP_400_BAD_REQUEST)
+                
+        return Response({"message":"Method not allowed"},status.HTTP_403_FORBIDDEN)
+        
+    if( req.method == 'GET'):
+        get_object_or_404(Order,user=user,pk=orderId)
+        items = get_list_or_404(OrderItem,order=orderId)
+        serialized_item = OrderItemSerializer(items,many=True)
+        return Response(serialized_item.data, status.HTTP_200_OK)
+    
+    return Response({"message":"Method not allowed"},status.HTTP_403_FORBIDDEN)
+
 
 """ 
 @api_view(['GET','POST','PUT','PATCH','DELETE'])
